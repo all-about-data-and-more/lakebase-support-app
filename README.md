@@ -5,7 +5,7 @@ Postgres) that implements a support ticketing system.
 
 ## Schema
 
-- **tickets** — `ticket_id`, `title`, `status` (`open` / `in_progress` / `resolved`), `created_by`, `created_at`
+- **tickets** — `ticket_id`, `title`, `status` (`open` / `in_progress` / `resolved`), `priority` (`low` / `normal` / `high` / `urgent`), `created_by`, `created_at`
 - **ticket_messages** — `message_id`, `ticket_id` (FK &rarr; `tickets.ticket_id`, `ON DELETE CASCADE`), `message_text`, `author`, `created_at`
 
 Both tables are created automatically on startup (`ensure_schema()` in
@@ -16,11 +16,20 @@ statuses.
 ## Endpoints
 
 - `GET /healthz` — health check
-- `GET /tickets?status=open` — list tickets (optional status filter), each with a `message_count`
-- `POST /tickets` — create a ticket, body `{"title": ..., "created_by": ...}`
+- `GET /tickets?status=open&priority=high` — list tickets (optional status/priority filters), each with a `message_count`
+- `POST /tickets` — create a ticket, body `{"title": ..., "created_by": ..., "priority": "normal"}` (priority optional, defaults to `normal`)
 - `GET /tickets/<id>` — one ticket plus all of its messages
-- `PATCH /tickets/<id>` — update status, body `{"status": "open" | "in_progress" | "resolved"}`
+- `PATCH /tickets/<id>` — update status and/or priority, body `{"status": ...}`, `{"priority": ...}`, or both
+- `DELETE /tickets/<id>` — delete a ticket (messages cascade automatically)
 - `POST /tickets/<id>/messages` — add a message, body `{"message_text": ..., "author": ...}`
+
+## Bonus challenges implemented
+
+- **Ticket priority** — `low` / `normal` / `high` / `urgent`, settable on create and editable afterward
+- **Filtering by status and priority** — both in the API (`?status=`, `?priority=`) and the UI toolbar
+- **Input validation and helpful error messages** — every write endpoint validates required fields and enum values, returning a specific `{"error": "..."}` message (never a bare 500 or HTML error page)
+- **Ticket statistics** — a stat-card row (total / open / in progress / resolved) above the ticket list
+- **Delete with confirmation** — a "Delete ticket" button in the ticket detail view, gated behind a browser `confirm()` prompt
 
 ## Reusing the existing Lakebase connection
 

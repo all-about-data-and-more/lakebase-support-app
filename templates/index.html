@@ -134,6 +134,11 @@
     .badge.in_progress { background: var(--in-progress-bg); color: var(--in-progress); }
     .badge.resolved { background: var(--resolved-bg); color: var(--resolved); }
 
+    .badge.priority-low { background: #eef0f2; color: #5b6472; }
+    .badge.priority-normal { background: var(--accent-soft); color: var(--accent); }
+    .badge.priority-high { background: #ffe9d6; color: #b8560f; }
+    .badge.priority-urgent { background: #fbe1e1; color: #b32424; }
+
     .empty-state { text-align: center; padding: 60px 20px; color: var(--ink-soft); }
 
     .banner {
@@ -220,6 +225,13 @@
         <option value="in_progress">In progress</option>
         <option value="resolved">Resolved</option>
       </select>
+      <select id="priority-filter" onchange="loadTickets()">
+        <option value="">All priorities</option>
+        <option value="low">Low</option>
+        <option value="normal">Normal</option>
+        <option value="high">High</option>
+        <option value="urgent">Urgent</option>
+      </select>
     </div>
 
     <div class="ticket-list" id="ticket-list"></div>
@@ -241,6 +253,15 @@
           <label for="new-created-by">Your email / name</label>
           <input type="text" id="new-created-by" placeholder="e.g. you@example.com" required>
         </div>
+        <div class="field">
+          <label for="new-priority">Priority</label>
+          <select id="new-priority">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
         <button type="submit" class="btn-primary">Create ticket</button>
       </form>
     </div>
@@ -259,11 +280,21 @@
 
       <div class="status-row">
         <label for="status-select" style="font-size:13px;color:var(--ink-soft);">Status</label>
-        <select id="status-select" onchange="changeStatus()">
+        <select id="status-select" onchange="updateTicketField('status', this.value)">
           <option value="open">Open</option>
           <option value="in_progress">In progress</option>
           <option value="resolved">Resolved</option>
         </select>
+
+        <label for="priority-select" style="font-size:13px;color:var(--ink-soft);margin-left:8px;">Priority</label>
+        <select id="priority-select" onchange="updateTicketField('priority', this.value)">
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
+
+        <button type="button" class="btn-danger" style="margin-left:auto;" onclick="deleteCurrentTicket()">Delete ticket</button>
       </div>
 
       <div class="messages" id="detail-messages"></div>
@@ -292,6 +323,10 @@
       return { open: "Open", in_progress: "In progress", resolved: "Resolved" }[status] || status;
     }
 
+    function priorityLabel(priority) {
+      return { low: "Low", normal: "Normal", high: "High", urgent: "Urgent" }[priority] || priority;
+    }
+
     function renderStats(tickets) {
       const counts = { open: 0, in_progress: 0, resolved: 0 };
       tickets.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
@@ -306,13 +341,17 @@
 
     async function loadTickets() {
       const status = document.getElementById("status-filter").value;
-      const url = status ? `/tickets?status=${encodeURIComponent(status)}` : "/tickets";
+      const priority = document.getElementById("priority-filter").value;
+      const query = new URLSearchParams();
+      if (status) query.set("status", status);
+      if (priority) query.set("priority", priority);
+      const url = query.toString() ? `/tickets?${query}` : "/tickets";
       try {
         const resp = await fetch(url);
         const data = await resp.json();
         if (!resp.ok) { showBanner(data.error || "Failed to load tickets", "error"); return; }
 
-        renderStats(status ? await (await fetch("/tickets")).json() : data);
+        renderStats(query.toString() ? await (await fetch("/tickets")).json() : data);
 
         const listEl = document.getElementById("ticket-list");
         if (data.length === 0) {
@@ -327,6 +366,7 @@
             </div>
             <div class="ticket-side">
               <span class="msg-count">${t.message_count} msg${t.message_count == 1 ? "" : "s"}</span>
+              <span class="badge priority-${t.priority}">${priorityLabel(t.priority)}</span>
               <span class="badge ${t.status}">${statusLabel(t.status)}</span>
             </div>
           </div>
@@ -354,11 +394,12 @@
       e.preventDefault();
       const title = document.getElementById("new-title").value.trim();
       const created_by = document.getElementById("new-created-by").value.trim();
+      const priority = document.getElementById("new-priority").value;
       try {
         const resp = await fetch("/tickets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, created_by }),
+          body: JSON.stringify({ title, created_by, priority }),
         });
         const data = await resp.json();
         if (!resp.ok) { showBanner(data.error || "Could not create ticket", "error"); return; }
@@ -388,6 +429,7 @@
         document.getElementById("detail-meta").textContent =
           `Opened by ${data.created_by} on ${new Date(data.created_at).toLocaleString()}`;
         document.getElementById("status-select").value = data.status;
+        document.getElementById("priority-select").value = data.priority;
 
         const messagesEl = document.getElementById("detail-messages");
         messagesEl.innerHTML = data.messages.map((m) => `
@@ -401,17 +443,33 @@
       }
     }
 
-    async function changeStatus() {
-      const status = document.getElementById("status-select").value;
+    async function updateTicketField(field, value) {
       try {
         const resp = await fetch(`/tickets/${currentTicketId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ [field]: value }),
         });
         const data = await resp.json();
-        if (!resp.ok) { showBanner(data.error || "Could not update status", "error"); return; }
-        showBanner(`Status updated to ${statusLabel(status)}`, "success");
+        if (!resp.ok) { showBanner(data.error || `Could not update ${field}`, "error"); return; }
+        const label = field === "status" ? statusLabel(value) : priorityLabel(value);
+        showBanner(`${field === "status" ? "Status" : "Priority"} updated to ${label}`, "success");
+        loadTickets();
+      } catch (err) {
+        showBanner("Request failed: " + err, "error");
+      }
+    }
+
+    async function deleteCurrentTicket() {
+      if (!confirm(`Delete ticket #${currentTicketId} and all of its messages? This can't be undone.`)) {
+        return;
+      }
+      try {
+        const resp = await fetch(`/tickets/${currentTicketId}`, { method: "DELETE" });
+        const data = await resp.json();
+        if (!resp.ok) { showBanner(data.error || "Could not delete ticket", "error"); return; }
+        closeModal("ticketModal");
+        showBanner(`Ticket #${currentTicketId} deleted`, "success");
         loadTickets();
       } catch (err) {
         showBanner("Request failed: " + err, "error");
