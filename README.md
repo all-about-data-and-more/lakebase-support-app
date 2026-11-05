@@ -35,7 +35,7 @@ statuses.
 
 This app intentionally reuses the same Lakebase instance and
 `database/lakebase-url` secret scope already set up for the
-[databricks-lakebase-app-day-1](https://github.com/modern-data-engineering-lab/databricks-lakebase-app-day-1)
+[databricks-lakebase-app-day-1](https://github.com/all-about-data-and-more/databricks-lakebase-app-day-1)
 project in this workspace — no new secret setup is needed. `tickets` and
 `ticket_messages` just live alongside `watchlist`/`massive_records` as new
 tables in the same Postgres database.
